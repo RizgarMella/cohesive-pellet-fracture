@@ -154,6 +154,10 @@ def run_local(study_dir: str, parallel: int, threads: int, solver: str, only: li
             if not pczio.run_complete(os.path.join(study_dir, "runs", cid)) and (not only or cid in only)]
     print(f"{len(lines) - len(todo)} complete, {len(todo)} to run ({parallel} at a time, {threads} threads each)")
     env = dict(os.environ, PELLETCZ=solver, OMP_NUM_THREADS=str(threads))
+    if parallel * threads > (os.cpu_count() or 1):
+        # oversubscribed: spinning OpenMP barriers would stall every run
+        env.setdefault("OMP_WAIT_POLICY", "PASSIVE")
+        print(f"warning: {parallel} x {threads} threads > {os.cpu_count()} cores - using OMP_WAIT_POLICY=PASSIVE")
 
     def go(item):
         cid, cmd = item

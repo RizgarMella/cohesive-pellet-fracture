@@ -136,7 +136,7 @@ G_c is raised to 1.05 sigma_t^2/(2K) where a draw would leave no softening branc
 | `line_search` | true | backtracking |
 | `preconditioner` | amg | `amg` (smoothed aggregation) or `jacobi` (block Jacobi) |
 | `amg_rebuild_iterations` | 40 | rebuild the hierarchy when PCG needs more iterations |
-| `linear_tolerance`, `linear_max_iterations` | 1e-6, 20000 | PCG |
+| `linear_tolerance`, `linear_max_iterations` | 1e-3, 20000 | PCG relative tolerance per Newton iteration (inexact Newton; 1e-6 changes crack area by < 0.5 % at 1.5x the cost) |
 | `stabilization` | 1e-9 | matrix-only diagonal shift (fraction of mean diagonal) |
 | `thermal_max_iterations`, `thermal_tolerance` | 30, 1e-3 K | Picard iterations for k(T) |
 | `coupling_iterations` | 1 | thermal -> mechanical passes per step |

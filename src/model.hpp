@@ -44,7 +44,7 @@ struct SolverParams {
   int newton_max = 40;
   double newton_tol = 5e-4;        // ||R|| / ||F_ref||
   double newton_dtol = 1e-6;       // ||du||_inf / max|u| (secondary)
-  double lin_rtol = 1e-6;
+  double lin_rtol = 1e-3;          // inexact Newton: PCG to 1e-3 of the current residual
   int lin_maxit = 20000;
   double stabilization = 1e-9;     // matrix-only diagonal shift (fraction of mean diagonal)
   int thermal_max = 30;
@@ -53,7 +53,7 @@ struct SolverParams {
   double thermal_skip_dt = 1e-2;   // s: steps shorter than this keep the temperature field
   bool line_search = true;
   bool amg = true;                 // AMG preconditioner (false: block Jacobi)
-  int amg_rebuild_iters = 40;      // rebuild the hierarchy when PCG needs more iterations
+  int amg_rebuild_iters = 40;      // rebuild when PCG needs more than this AND twice the fresh-hierarchy count
 };
 
 struct ThermalBC {
@@ -177,7 +177,7 @@ public:
   BlockCSR Kmat;    // working matrix
   BlockCSR Kth;     // thermal
   AMG amg_u, amg_T;
-  int last_pcg_u = 1 << 30, last_pcg_T = 1 << 30, amg_builds = 0, amg_builds_T = 0;
+  int last_pcg_u = 1 << 30, last_pcg_T = 1 << 30, amg_builds = 0, amg_builds_T = 0, base_pcg_u = 1, base_pcg_T = 1;
   long pcg_T_total = 0;
   std::vector<std::array<int, 64>> hex_blk, if_blk;  // block positions for scatter
   std::vector<double> F_eig, F_ext;

@@ -24,7 +24,13 @@ import features as ft  # noqa: E402
 
 
 def evaluate(card: dict, feats: dict) -> float:
-    import sympy as sp
+    try:
+        import sympy as sp
+    except ImportError:  # plain evaluation of the stored expression (no sympy needed)
+        import math
+        ns = {k: getattr(math, k) for k in ("log", "exp", "sqrt", "sin", "cos", "tanh")}
+        ns.update(square=lambda x: x * x, cube=lambda x: x ** 3, Abs=abs, **{f: feats[f] for f in card["features"]})
+        return float(eval(card["expression"].replace("^", "**"), {"__builtins__": {}}, ns))
     syms = {f: sp.Symbol(f) for f in card["features"]}
     expr = sp.sympify(card["expression"], locals=syms)
     fn = sp.lambdify([syms[f] for f in card["features"]], expr, "math")

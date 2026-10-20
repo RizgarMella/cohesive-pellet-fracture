@@ -66,7 +66,11 @@ def heating(q_peak=400.0, t_ramp=400.0):
 
 def plan(a):
     sdir = os.path.join(a.root, a.name)
-    prof = PROFILES[a.profile]
+    prof = dict(PROFILES[a.profile])
+    if a.levels:
+        prof = {f: list(a.levels) for f in prof}
+    if a.families:
+        prof = {f: v for f, v in prof.items() if f in a.families}
     cases, k = [], 0
     hist = heating(a.q_peak, a.t_ramp)
     base_area = (2 * math.pi * R0 / 32) * (H0 / 24)  # facet area of the nr=12 base mesh (radial face ~ dr*dz)
@@ -247,6 +251,8 @@ def main():
     p.add_argument("--q-peak", type=float, default=400.0, help="W/cm at the end of the ramp")
     p.add_argument("--t-ramp", type=float, default=400.0, help="s")
     p.add_argument("--threads", type=int, default=0)
+    p.add_argument("--levels", type=int, nargs="*", help="override the nr levels")
+    p.add_argument("--families", nargs="*", choices=["field", "element", "constant"])
     for name in ("analyze", "plot"):
         q = sp.add_parser(name)
         q.add_argument("study_dir")

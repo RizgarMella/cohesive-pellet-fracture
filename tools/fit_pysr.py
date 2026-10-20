@@ -53,7 +53,6 @@ def make_model(a, outdir, target):
 
 def fit(a):
     import pandas as pd
-    import sympy as sp
     from sklearn.ensemble import HistGradientBoostingRegressor
     from sklearn.metrics import mean_squared_error, r2_score
 
@@ -82,6 +81,7 @@ def fit(a):
                                 baseline_gbr_val_rmse=base_rmse, expression=None))
             continue
         model.fit(Xtr, ytr, variable_names=feats)
+        import sympy as sp
         eqs = model.equations_.copy()
         val_rmse, val_r2, tr_rmse = [], [], []
         for i in range(len(eqs)):

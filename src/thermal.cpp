@@ -136,13 +136,15 @@ bool Model::solve_thermal(double t, double dt, int& iters) {
 #pragma omp parallel for
     for (int n = 0; n < nn; ++n) res[n] = rhs[n] - res[n];
     std::fill(dT.begin(), dT.end(), 0.0);
-    if (sp.amg && (!amg_T.ready() || last_pcg_T > 2 * sp.amg_rebuild_iters)) {
+    const bool rebuild = !amg_T.ready() || (last_pcg_T > sp.amg_rebuild_iters && last_pcg_T > 2 * base_pcg_T);
+    if (sp.amg && rebuild) {
       amg_T.prm.theta = 0.08;  // keeps bonded-interface pairs from swamping the aggregation
       amg_T.setup(Kth, mask_T, nullptr);
       ++amg_builds_T;
     }
     auto r = pcg(Kth, res, dT, mask_T, 1e-8, sp.lin_maxit, sp.amg ? &amg_T : nullptr);
     last_pcg_T = r.iters;
+    if (rebuild) base_pcg_T = std::max(r.iters, 1);
     pcg_T_total += r.iters;
     double m = norm_inf(dT);
 #pragma omp parallel for

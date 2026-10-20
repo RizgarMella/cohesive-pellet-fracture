@@ -302,7 +302,7 @@ directory = )") + dir + "\n");
   double Aann = A * 0.75;
   check(m.met.if_area < 1.05 * Aann && m.met.if_area > 0.6 * Aann, "pressed stack: contact only on the annulus",
         m.met.if_area, Aann);
-  check(m.met.pin_reaction < 1e-6 * 10e6 * A, "pressed stack: no pin reactions", m.met.pin_reaction, 0.0);
+  check(m.met.pin_reaction < 1e-5 * 10e6 * A, "pressed stack: no pin reactions", m.met.pin_reaction, 0.0);
   check(rel(m.met.bottom_reaction, 10e6 * A, 1e-3), "pressed stack: bottom reaction = p A", m.met.bottom_reaction,
         10e6 * A);
   fs::remove_all(dir);

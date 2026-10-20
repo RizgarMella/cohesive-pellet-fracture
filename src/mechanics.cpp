@@ -283,12 +283,15 @@ bool Model::solve_mechanics(double t, double dt, Diagnostics& dg) {
     }
     if (sp.stabilization > 0) Kmat.add_diagonal(sp.stabilization * diag_mean);
     std::fill(du.begin(), du.end(), 0.0);
-    if (sp.amg && (!amg_u.ready() || last_pcg_u > sp.amg_rebuild_iters)) {
+    // rebuild the hierarchy only when the stale one has clearly degraded
+    const bool rebuild = !amg_u.ready() || (last_pcg_u > sp.amg_rebuild_iters && last_pcg_u > 2 * base_pcg_u);
+    if (sp.amg && rebuild) {
       amg_u.setup(Kmat, mask_u, &mesh.X);
       ++amg_builds;
     }
     auto lr = pcg(Kmat, R, du, mask_u, sp.lin_rtol, sp.lin_maxit, sp.amg ? &amg_u : nullptr);
     last_pcg_u = lr.iters;
+    if (rebuild) base_pcg_u = std::max(lr.iters, 1);
     dg.lin_iters += lr.iters;
     ++dg.newton_iters;
     if (!lr.converged && lr.rel_res > 1e-3) {
