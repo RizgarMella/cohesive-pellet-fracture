@@ -1,0 +1,20 @@
+name: build-and-test
+on: [push, pull_request]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install OpenMP and MPI
+        run: sudo apt-get update && sudo apt-get install -y libomp-dev libopenmpi-dev openmpi-bin
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build -j 2
+      - name: Unit and verification tests
+        run: cd build && ctest --output-on-failure
+      - name: MPI ensemble smoke test
+        run: |
+          printf "inputs/single_pellet_demo.ini mesh.nr=4 mesh.ntheta=16 mesh.nz=8 time.end=5 output.vtu=false output.directory=build/ens0\ninputs/single_pellet_demo.ini mesh.nr=4 mesh.ntheta=16 mesh.nz=8 time.end=5 output.vtu=false output.directory=build/ens1\n" > build/cases.txt
+          mpirun --oversubscribe -n 2 build/pelletcz --ensemble build/cases.txt --threads 1
+          grep -q '"complete": true' build/ens0/summary.json && grep -q '"complete": true' build/ens1/summary.json
