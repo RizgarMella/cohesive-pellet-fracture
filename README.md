@@ -20,7 +20,8 @@ from the two methods can be compared directly.
 
 > **Status.** The solver, tests and study planners are complete and the verification tests pass. The
 > studies themselves have **not** been run; the pictures below come from one simple single-pellet run on a
-> coarse mesh (see [Demo](#demo-single-pellet-power-up)).
+> coarse mesh (see [Demo](#demo-single-pellet-power-up)). The two-pellet model is covered by the
+> pressed-stack verification test and a short heated smoke run, not by a full sympathetic-cracking run.
 
 ---
 
@@ -93,7 +94,9 @@ pressure are the only things that couple the pellets.
   * Chebyshev smoothing.
   * OpenMP SpGEMM on every level; dense Cholesky on the coarsest.
   * The hierarchy is reused until the iteration count rises, then rebuilt.
-  * About 25–40 iterations per mechanical solve, against ~1,300 for block-Jacobi on the demo mesh.
+  * About 25–40 iterations per solve to 10⁻⁶, against ~1,300 for block-Jacobi on a 30 k-dof pellet.
+  * Newton solves are inexact: PCG to 10⁻³ of the current residual. This is 35 % faster than 10⁻⁶ and
+    changes crack area by < 0.5 %.
 * **Time stepping:** adaptive.
   * A step is rejected and cut if Newton fails, or if the viscous damage jumps by more than
     `max_damage_increment` anywhere.
@@ -114,7 +117,7 @@ pressure are the only things that couple the pellets.
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release        # finds OpenMP and (optionally) MPI
 cmake --build build -j
-cd build && ctest --output-on-failure                 # verification tests (≈ 15 s)
+cd build && ctest --output-on-failure                 # verification tests (≈ 10 s)
 ```
 
 Requires a C++17 compiler; OpenMP and MPI are optional (`-DPELLETCZ_USE_MPI=OFF`,
@@ -179,12 +182,61 @@ Every output is self-describing, and column names carry units.
 | steady centre temperature rise q′/(4πk) | 0.3 % (polygonal section) |
 | mid-plane hoop stress vs. analytic parabolic-T solution αEΔT(3ρ²−1)/(4(1−ν)) | 3.6 % RMS |
 | **structural tension test across a cohesive plane**: peak force = σ_t·A, dissipated energy = G_c·A, zero force after separation, through snap-back | 0.01 % / 0.0 % |
+| **pressed two-pellet stack**: contact force = bottom reaction = p·A, contact confined to the annulus, pins carry nothing (< 10⁻⁵ p·A) | 0.001 % |
 
 ---
 
 ## Demo: single pellet power-up
 
-DEMO_SECTION
+`inputs/single_pellet_demo.ini` reproduces the paper's power-up step: 0 → 240 W/cm in 200 s, h = 5000 W/m²K
+to 500 K coolant, free surfaces, no cladding.
+
+**Model.**
+* Coarse mesh: nr = 8, n_θ = 32, n_z = 16 → 4,096 hexes, 32 k displacement dofs.
+* 4,352 cohesive interfaces on 8 radial planes, 7 transverse planes and circumferential surfaces at 0.25,
+  0.5 and 0.75 R.
+* Weibull strength and toughness, m = 8, means 130 MPa and 4 J/m².
+* Correlated field, l_c = 0.5 mm, ρ = 0.5. The sampled σ_t ranged from 36 to 178 MPa.
+
+**Cost.** 8,457 steps (107 rejected), 72 min on 2 cores. Build `src-ec97febaba28-git-376cdb8`.
+
+![3D crack development](docs/images/demo_cracking_3d.png)
+
+![Mid-height cross-section](docs/images/demo_midplane.png)
+
+![Histories](docs/images/demo_history.png)
+
+**Initiation.**
+* The first crack initiates at **ΔT = 52 K** (q′ = 40 W/cm).
+  * The surface hoop stress there is ≈ 87 MPa, so the crack starts in a weak region of the Weibull field.
+  * The deterministic paper models first crack at 80 K (axisymmetric) and 88 K (3D).
+* The crack then runs unstably at fixed load, over ~0.1 s of µs-scale steps (lower-right panel).
+  * It cuts the full height and passes through the axis, so the pellet opens along a diameter.
+  * This is the behaviour the paper reports for its single-seed plane-strain case (Fig. 7d). Without a
+    cladding to stop the pellet opening, one dominant early crack controls what follows.
+
+**Further cracking with power.**
+* More radial cracks, then circumferential and transverse cracks, appear in bursts as ΔT rises
+  (upper-right panel).
+* By 240 W/cm (ΔT = 491 K) **710 mm²** is cracked:
+  * all 8 radial planes (352 mm²);
+  * all 7 transverse planes, unevenly (176 mm²);
+  * the 0.25 R and 0.5 R circumferential surfaces (182 mm²).
+* The crack network relieves the stress. The largest principal stress anywhere is 65 MPa, against
+  ≈ 820 MPa at the surface of an uncracked elastic pellet.
+* Intact ligaments still hold every piece together, so there is 1 fragment; L_eq = 3V/A = 4.1 mm.
+* The stress field after cracking is strongly non-uniform, as the paper concludes.
+* The rigid-body pins carried < 1.1 N throughout. They held the body without loading it.
+
+**Resolution caveat.** This mesh has ζ = l_cz/h ≈ 0.06, so the cohesive zone is far from resolved.
+Treat the picture as qualitative; the convergence study (Q1) is what turns it into numbers.
+
+Reproduce:
+
+```bash
+OMP_NUM_THREADS=8 ./build/pelletcz inputs/single_pellet_demo.ini
+python tools/render.py runs/single_pellet_demo --frames 9,30,51,72 --warp 15
+```
 
 ---
 
@@ -299,8 +351,11 @@ distributions (including Weibull m, l_c and ρ) and power histories, including t
   the paper. Pellet–clad interaction is the natural next step.
 * **Coupling.** Thermal and mechanics are staggered within a step (`solver.coupling_iterations` adds
   passes), not monolithic.
-* **Cohesive resolution.** At the demo resolution ζ ≈ 0.13, far below the ζ ≈ 3 Turon et al. recommend.
+* **Cohesive resolution.** At the demo resolution ζ ≈ 0.06, far below the ζ ≈ 3 Turon et al. recommend.
   Crack paths and onset are meaningful; crack lengths and areas need the convergence study.
+* **Cost of crack bursts.** Unstable growth is resolved on the viscous time scale (dt ~ 2μ), so run time
+  scales with the cracked area. The demo spent most of its 72 min in bursts. Time a coarse level before
+  launching a sweep.
 * **Parallelism.** MPI parallelises *cases*, not one solve. The largest single model is bounded by one
   node's memory: about 2 M dofs on a 64 GB node.
 
@@ -310,9 +365,10 @@ distributions (including Weibull m, l_c and ρ) and power histories, including t
 |---|---|
 | `src/` | solver: mesh with crack-plane regions (`mesh.*`), cohesive/contact law (`interface_law.*`), Weibull fields (`random_field.*`), UO₂ properties (`materials.*`), thermal / mechanics / time stepping (`thermal.cpp`, `mechanics.cpp`, `solver.cpp`), AMG (`amg.*`), block-CSR + PCG (`sparse.*`), outputs (`output.cpp`) |
 | `tests/` | verification tests (ctest) |
+| `docs/images/` | demo figures (rendered by `tools/render.py`) |
 | `inputs/` | `single_pellet_demo.ini`, `two_pellet_sympathetic.ini` |
 | `tools/` | `pczio.py` readers, `render.py` figures, `study_common.py`, `mesh_convergence.py`, `weibull_study.py`, `stack_study.py`, `campaign.py`, `features.py`, `fit_pysr.py`, `predict_fragments.py` |
-| `docs/` | input reference, demo images |
+| `docs/INPUT_REFERENCE.md` | every input key |
 
 ## References
 

@@ -102,10 +102,9 @@ def fig_3d(run, frames, warp, dcut, out):
     idx = _frame_list(ss, frames)
     smaps = [pczio.read_vtu(ss[i][1]) for i in idx]
     cmaps = [pczio.read_vtu(cs[i][1]) for i in idx]
-    # plot box large enough for the warped shapes
-    wz = [(s["points"] + warp * s["point_data"]["displacement_m"])[:, 2] for s in smaps]
-    wr = [np.hypot(*(s["points"] + warp * s["point_data"]["displacement_m"])[:, :2].T) for s in smaps]
-    z0, Ztop, R = min(0.0, min(w.min() for w in wz)), max(Ztop, max(w.max() for w in wz)), max(R, max(w.max() for w in wr))
+    def box(sm):  # plot box of one frame, large enough for its warped shape
+        P = sm["points"] + warp * sm["point_data"]["displacement_m"]
+        return (min(0.0, P[:, 2].min()), max(Ztop, P[:, 2].max()), max(R0, np.abs(P[:, :2]).max()))
     vmax = max(np.percentile(s["cell_data"]["max_principal_MPa"], 99.5) for s in smaps)
     vmin = min(np.percentile(s["cell_data"]["max_principal_MPa"], 0.5) for s in smaps)
     vmax = max(vmax, 1.0)
@@ -114,16 +113,17 @@ def fig_3d(run, frames, warp, dcut, out):
     omax = max([np.percentile(c["cell_data"]["opening_um"][c["cell_data"]["damage"] >= dcut], 98)
                 if np.any(c["cell_data"]["damage"] >= dcut) else 0.01 for c in cmaps])
     n = len(idx)
-    fig = plt.figure(figsize=(3.3 * n + 1.2, 7.6 * (0.55 + 0.45 * Ztop / (2 * R) / 1.5)))
+    fig = plt.figure(figsize=(3.3 * n + 1.2, 7.6 * (0.55 + 0.45 * Ztop / (2 * R0) / 1.5)))
     for j, (i, s, c) in enumerate(zip(idx, smaps, cmaps)):
         t = ss[i][0]
         h = _hist_at(hist, t)
+        z0, zt, Rb = box(s)
         ax = fig.add_subplot(2, n, j + 1, projection="3d")
-        _setup3d(ax, R, Ztop, z0)
+        _setup3d(ax, Rb, zt, z0)
         ns = draw_surface(ax, s, warp, (vmin, vmax), cm_s)
         ax.set_title(f"t = {t:.4g} s\nq' = {h.linear_power_Wpm / 100:.0f} W/cm,  ΔT = {h.dT_K:.0f} K", fontsize=9)
         ax2 = fig.add_subplot(2, n, n + j + 1, projection="3d")
-        _setup3d(ax2, R, Ztop, z0)
+        _setup3d(ax2, Rb, zt, z0)
         outline(ax2, R0, H * npel, npel, H)
         nc, cnt = draw_cracks(ax2, c, warp, dcut, cmap=cm_c, omax=omax)
         ax2.set_title(f"crack area {h.crack_area_mm2:.1f} mm²,  {int(h.n_fragments)} fragment(s)", fontsize=9)
@@ -131,9 +131,9 @@ def fig_3d(run, frames, warp, dcut, out):
     fig.colorbar(plt.cm.ScalarMappable(norm=ns, cmap=cm_s), cax=cax, label="max principal stress [MPa]")
     cax2 = fig.add_axes([0.93, 0.10, 0.012, 0.32])
     fig.colorbar(plt.cm.ScalarMappable(norm=nc, cmap=cm_c), cax=cax2, label="crack opening [µm]")
-    fig.suptitle(f"pelletcz - deformed pellet (displacements x{warp:g}) and cohesive cracks (damage ≥ {dcut})",
-                 fontsize=10)
-    fig.subplots_adjust(left=0.01, right=0.91, top=0.9, bottom=0.02, wspace=0.0, hspace=0.12)
+    fig.suptitle(f"deformed pellet (displacements x{warp:g}) coloured by max principal stress, and the cohesive "
+                 f"crack surfaces (damage ≥ {dcut}) coloured by opening", fontsize=10, y=0.995)
+    fig.subplots_adjust(left=0.01, right=0.91, top=0.88, bottom=0.02, wspace=0.0, hspace=0.12)
     fig.savefig(out, dpi=150)
     plt.close(fig)
     print("wrote", out)
@@ -237,8 +237,8 @@ def fig_history(run, out):
     ax.set_xlabel("time [s]")
     ax.set_ylabel("crack area [mm²]")
     axb = ax.twinx()
-    axb.step(tt, h.n_fragments, color="C2", where="post", lw=1.2)
-    axb.set_ylabel("fragments", color="C2")
+    axb.plot(tt, h.dissipated_energy_mJ, color="C2", lw=1.2)
+    axb.set_ylabel("dissipated fracture energy [mJ]", color="C2")
     ax.set_title("crack growth in time (bursts at fixed load)")
     ax = axs[1, 1]
     ax.semilogy(np.arange(len(h)), np.diff(np.concatenate([[0], t])).clip(1e-9), color="C0", lw=1, label="dt [s]")
@@ -257,7 +257,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("run_dir")
     ap.add_argument("--frames", default="", help="comma list of output indices (negative = from end)")
-    ap.add_argument("--warp", type=float, default=150.0)
+    ap.add_argument("--warp", type=float, default=20.0)
     ap.add_argument("--dcut", type=float, default=0.99)
     ap.add_argument("--out", default=None, help="output directory (default <run>/figures)")
     ap.add_argument("--prefix", default="")
